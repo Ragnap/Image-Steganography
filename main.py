@@ -2,6 +2,7 @@ import os.path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
 import torchvision
@@ -26,6 +27,8 @@ TRAIN_INPUT_PATH = 'dataset'
 TRAIN_OUTPUT_PATH = 'output/train'
 # 模型保存位置
 MODULE_PATH = 'output/module'
+# 噪音均值
+NOISE_MEAN = 0.5
 # 嵌入器中双tanh的参数
 TANH_LAMBDA = 60
 # 生成器损失函数参数
@@ -44,7 +47,7 @@ class GeneratorNode(nn.Module):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.bn = nn.BatchNorm2d(out_channels)
-        self.relu = nn.LeakyReLU(negative_slope=RELU_GAMA, inplace=True)
+        self.relu = nn.LeakyReLU(negative_slope=RELU_GAMA)
 
     def forward(self, x):
         out = self.conv(x)
@@ -55,7 +58,7 @@ class GeneratorNode(nn.Module):
 
 # 嵌入器
 def embed(prob, image, noise):
-    output = -0.5 * nn.functional.tanh((torch.sub(prob, 2 * noise)) * TANH_LAMBDA) + 0.5 * nn.functional.tanh((torch.sub(prob, torch.sub(2.0, 2 * noise))) * TANH_LAMBDA)
+    output = -0.5 * F.tanh((prob - 2 * noise) * TANH_LAMBDA) + 0.5 * F.tanh((prob - (2.0 - 2 * noise)) * TANH_LAMBDA)
     return output + image
 
 
@@ -70,27 +73,37 @@ class Generator(nn.Module):
         self.pool_2x = nn.MaxPool2d(kernel_size=2, stride=2)
         self.pool_4x = nn.MaxPool2d(kernel_size=4, stride=4)
         # 上采样操作
-        self.up_2x = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        self.up_4x = nn.Upsample(scale_factor=4, mode='bilinear', align_corners=True)
+        # self.up_2x = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        # self.up_4x = nn.Upsample(scale_factor=4, mode='bilinear', align_corners=True)
         # Unet++ L1
         self.conv0_0 = GeneratorNode(input_channels, gen_filter[0])
         self.conv1_0 = GeneratorNode(gen_filter[0], gen_filter[1])
         self.conv0_1 = GeneratorNode(gen_filter[0] + gen_filter[1], gen_filter[0])
+        self.up1_0 = nn.ConvTranspose2d(gen_filter[1], gen_filter[1], kernel_size=2, stride=2, padding=0)
         # Unet++ L2
         self.conv2_0 = GeneratorNode(gen_filter[1], gen_filter[2])
         self.conv1_1 = GeneratorNode(gen_filter[1] + gen_filter[2], gen_filter[1])
         self.conv0_2 = GeneratorNode(gen_filter[0] * 2 + gen_filter[1], gen_filter[0])
+        self.up2_0 = nn.ConvTranspose2d(gen_filter[2], gen_filter[2], kernel_size=2, stride=2, padding=0)
+        self.up1_1 = nn.ConvTranspose2d(gen_filter[1], gen_filter[1], kernel_size=2, stride=2, padding=0)
         # Unet++ L3
         self.conv3_0 = GeneratorNode(gen_filter[2], gen_filter[3])
         self.conv2_1 = GeneratorNode(gen_filter[2] + gen_filter[3], gen_filter[2])
         self.conv1_2 = GeneratorNode(gen_filter[1] * 2 + gen_filter[2], gen_filter[1])
         self.conv0_3 = GeneratorNode(gen_filter[0] * 3 + gen_filter[1], gen_filter[0])
+        self.up3_0 = nn.ConvTranspose2d(gen_filter[3], gen_filter[3], kernel_size=4, stride=4, padding=0)
+        self.up2_1 = nn.ConvTranspose2d(gen_filter[2], gen_filter[2], kernel_size=2, stride=2, padding=0)
+        self.up1_2 = nn.ConvTranspose2d(gen_filter[1], gen_filter[1], kernel_size=2, stride=2, padding=0)
         # Unet++ L4
         self.conv4_0 = GeneratorNode(gen_filter[3], gen_filter[4])
         self.conv3_1 = GeneratorNode(gen_filter[3] + gen_filter[4], gen_filter[3])
         self.conv2_2 = GeneratorNode(gen_filter[2] * 2 + gen_filter[3], gen_filter[2])
         self.conv1_3 = GeneratorNode(gen_filter[1] * 3 + gen_filter[2], gen_filter[1])
         self.conv0_4 = GeneratorNode(gen_filter[0] * 4 + gen_filter[1], gen_filter[0])
+        self.up4_0 = nn.ConvTranspose2d(gen_filter[4], gen_filter[4], kernel_size=4, stride=4, padding=0)
+        self.up3_1 = nn.ConvTranspose2d(gen_filter[3], gen_filter[3], kernel_size=4, stride=4, padding=0)
+        self.up2_2 = nn.ConvTranspose2d(gen_filter[2], gen_filter[2], kernel_size=2, stride=2, padding=0)
+        self.up1_3 = nn.ConvTranspose2d(gen_filter[1], gen_filter[1], kernel_size=2, stride=2, padding=0)
         # 监督方式
         self.final = nn.Conv2d(gen_filter[0], 3, kernel_size=1)
 
@@ -98,33 +111,29 @@ class Generator(nn.Module):
         # Unet++ L1
         x0_0 = self.conv0_0(input_image)
         x1_0 = self.conv1_0(self.pool_2x(x0_0))
-        x0_1 = self.conv0_1(torch.cat([x0_0, self.up_2x(x1_0)], 1))
+        x0_1 = self.conv0_1(torch.cat([x0_0, self.up1_0(x1_0)], 1))
         # Unet++ L2
         x2_0 = self.conv2_0(self.pool_2x(x1_0))
-        x1_1 = self.conv1_1(torch.cat([x1_0, self.up_2x(x2_0)], 1))
-        x0_2 = self.conv0_2(torch.cat([x0_0, x0_1, self.up_2x(x1_1)], 1))
+        x1_1 = self.conv1_1(torch.cat([x1_0, self.up2_0(x2_0)], 1))
+        x0_2 = self.conv0_2(torch.cat([x0_0, x0_1, self.up1_1(x1_1)], 1))
         # Unet++ L3
         x3_0 = self.conv3_0(self.pool_4x(x2_0))
-        x2_1 = self.conv2_1(torch.cat([x2_0, self.up_4x(x3_0)], 1))
-        x1_2 = self.conv1_2(torch.cat([x1_0, x1_1, self.up_2x(x2_1)], 1))
-        x0_3 = self.conv0_3(torch.cat([x0_0, x0_1, x0_2, self.up_2x(x1_2)], 1))
+        x2_1 = self.conv2_1(torch.cat([x2_0, self.up3_0(x3_0)], 1))
+        x1_2 = self.conv1_2(torch.cat([x1_0, x1_1, self.up2_1(x2_1)], 1))
+        x0_3 = self.conv0_3(torch.cat([x0_0, x0_1, x0_2, self.up1_2(x1_2)], 1))
         # Unet++ L4
         x4_0 = self.conv4_0(self.pool_4x(x3_0))
-        x3_1 = self.conv3_1(torch.cat([x3_0, self.up_4x(x4_0)], 1))
-        x2_2 = self.conv2_2(torch.cat([x2_0, x2_1, self.up_4x(x3_1)], 1))
-        x1_3 = self.conv1_3(torch.cat([x1_0, x1_1, x1_2, self.up_2x(x2_2)], 1))
-        x0_4 = self.conv0_4(torch.cat([x0_0, x0_1, x0_2, x0_3, self.up_2x(x1_3)], 1))
+        x3_1 = self.conv3_1(torch.cat([x3_0, self.up4_0(x4_0)], 1))
+        x2_2 = self.conv2_2(torch.cat([x2_0, x2_1, self.up3_1(x3_1)], 1))
+        x1_3 = self.conv1_3(torch.cat([x1_0, x1_1, x1_2, self.up2_2(x2_2)], 1))
+        x0_4 = self.conv0_4(torch.cat([x0_0, x0_1, x0_2, x0_3, self.up1_3(x1_3)], 1))
         # 监督方式
         output = self.final(x0_4)
         # 最后一层激活
-        output = torch.sigmoid(output)
+        output = F.sigmoid(output) - 0.5
+        output = F.relu(output) + 1e-5
         return output
 
-    # 输入3*size*size的图片，获得3*size*size的嵌入概率图
-    def get_prob_image(self, origin_image):
-        input_image = torch.unsqueeze(origin_image, dim=0)
-        prob_image = torch.squeeze(input_image)
-        return prob_image
 
 
 # 高通滤波器
@@ -170,7 +179,7 @@ class HPFNode(nn.Module):
         for i in range(6):
             kernel = self.HPF[i, :, :].unsqueeze(0).unsqueeze(0)
             kernel = kernel.repeat(1, self.image_channel, 1, 1)
-            output_channel = nn.functional.conv2d(input_image, kernel, stride=1, padding=2)
+            output_channel = F.conv2d(input_image, kernel, stride=1, padding=2)
             output.append(output_channel)
         output = torch.cat(output, dim=1)
         return output
@@ -182,9 +191,6 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         # 判别器特征层数量
         dis_filter = [8, 16, 32, 64, 128]
-        # active function
-        self.tanh = nn.Tanh()
-        self.relu = nn.ReLU()
         # 高通滤波
         self.HPF = HPFNode()
         # Group 1
@@ -210,32 +216,33 @@ class Discriminator(nn.Module):
         # Group 6 FullyConnect
         self.linear = nn.Linear(in_features=dis_filter[4], out_features=2)
 
+
     def forward(self, input_image):
         x0 = self.HPF(input_image)
         # Group 1
         conv1 = self.conv_1(x0)
         bn1 = self.bn_1(torch.abs(conv1))
-        pool1 = self.pool_1(self.tanh(bn1))
+        pool1 = self.pool_1(F.tanh(bn1))
         # Group 2
         conv2 = self.conv_2(pool1)
         bn2 = self.bn_2(conv2)
-        pool2 = self.pool_2(self.tanh(bn2))
+        pool2 = self.pool_2(F.tanh(bn2))
         # Group 3
         conv3 = self.conv_3(pool2)
         bn3 = self.bn_3(conv3)
-        pool3 = self.pool_3(self.relu(bn3))
+        pool3 = self.pool_3(F.relu(bn3))
         # Group 4
         conv4 = self.conv_4(pool3)
         bn4 = self.bn_4(conv4)
-        pool4 = self.pool_4(self.relu(bn4))
+        pool4 = self.pool_4(F.relu(bn4))
         # Group 5
         conv5 = self.conv_5(pool4)
         bn5 = self.bn_5(conv5)
-        pool5 = self.pool_5(self.relu(bn5))
+        pool5 = self.pool_5(F.relu(bn5))
         # Group 6 FullyConnect
         prob = pool5.squeeze()
         prob = self.linear(prob)
-        prob = nn.functional.softmax(prob, dim=1)
+        prob = F.softmax(prob, dim=1)
         return prob
 
 
@@ -271,7 +278,7 @@ def load_data():
         transforms.Resize([TRAIN_INPUT_SIZE, TRAIN_INPUT_SIZE]),  # 强制改变大小为TRAIN_INPUT_SIZE
         transforms.RandomHorizontalFlip(),  # 随机水平翻转
         transforms.ToTensor(),
-        # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
     dataset = torchvision.datasets.ImageFolder(root=TRAIN_INPUT_PATH, transform=transform)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True, num_workers=0)
@@ -308,7 +315,7 @@ def output_check_image(generator, check_image, epoch_time):
         os.makedirs(path)
     check_image = torch.unsqueeze(check_image, dim=0)
     prob_image = generator(check_image)
-    embed_image = embed(prob_image, check_image, torch.rand(check_image.size()).to(device) / 256)
+    embed_image = embed(prob_image, check_image, torch.rand(check_image.size()).to(device) * NOISE_MEAN)
     output_image = torch.cat([prob_image, embed_image], dim=0)
     save_image(output_image, f'{path}{epoch_time}.png', normalize=True)
 
@@ -325,19 +332,19 @@ if __name__ == '__main__':
     image_dataset, check_image = load_data()
     check_image = check_image.to(device)
     # training
-    for now_epoch in range(EPOCHS):
+    for now_epoch in range(EPOCHS + 1):
         dis_epoch_loss = 0.0
         gen_epoch_loss = 0.0
         for i, (train_images, _) in enumerate(image_dataset):
             train_images = train_images.to(device)
             # 生成噪音
-            noise = torch.rand(train_images.size()).to(device)
+            noise = torch.rand(train_images.size()).to(device) * NOISE_MEAN
 
             # 训练判别器
             dis_optimizers.zero_grad()
             # 判别器在真实图像上面的损失
             real_images = train_images
-            real_output = discriminator(real_images)
+            real_output = discriminator(real_images.detach())
             real_labels = torch.ones_like(real_output)
             dis_real_loss = dis_loss_fn(real_output, real_labels)
             dis_real_loss.backward()
@@ -374,7 +381,7 @@ if __name__ == '__main__':
             #     output_prob_image(generator, origin_images, image_id, f'{epoch}/')
             #     output_embed_image(generator, origin_images, image_id, f'{epoch}/')
 
-        print(f"Epoch: {now_epoch:6} - loss:[ gen:{gen_epoch_loss.item():10}, dis:{dis_epoch_loss.item():10} ]")
+        print(f"Epoch: {now_epoch:6} - loss:{gen_epoch_loss.item() + dis_epoch_loss.item():10} [gen:{gen_epoch_loss.item():10}, dis:{dis_epoch_loss.item():10}]")
 
     # checking
     output_check_image(generator, check_image, EPOCHS)
