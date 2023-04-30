@@ -9,6 +9,7 @@ import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import save_image
+import matplotlib.pyplot as plt
 
 # 超参数定义
 # RELU中负数端的系数
@@ -16,9 +17,9 @@ RELU_GAMA = 0.2
 # 单次训练batch大小
 BATCH_SIZE = 2
 # 迭代次数
-EPOCHS = 20
+EPOCHS = 4
 # 进行检查的训练数
-CHECK_EPOCHS = [EPOCHS / 4, EPOCHS / 2, EPOCHS * 3 / 4]
+CHECK_EPOCHS = 2
 # 生成器输入尺寸
 TRAIN_INPUT_SIZE = 256
 # 训练用图片
@@ -33,7 +34,7 @@ NOISE_MEAN = 0.5
 TANH_LAMBDA = 60
 # 生成器损失函数参数
 GEN_LOSS_ALPHA = 1
-GEN_LOSS_BETA = 1e-4
+GEN_LOSS_BETA = 1e-6
 # 嵌入率（用于计算生成器嵌入损失）
 EMBED_RATE = 0.4
 
@@ -135,7 +136,6 @@ class Generator(nn.Module):
         return output
 
 
-
 # 高通滤波器
 class HPFNode(nn.Module):
     def __init__(self, image_channel=3):
@@ -216,7 +216,6 @@ class Discriminator(nn.Module):
         # Group 6 FullyConnect
         self.linear = nn.Linear(in_features=dis_filter[4], out_features=2)
 
-
     def forward(self, input_image):
         x0 = self.HPF(input_image)
         # Group 1
@@ -285,30 +284,6 @@ def load_data():
     return dataloader, dataset[0][0]
 
 
-def output_origin_image(origin_image, image_id, path=''):
-    path = f'{TRAIN_OUTPUT_PATH}/{path}'
-    if not os.path.exists(path):
-        os.makedirs(path)
-    save_image(origin_image, f'{path}ori_images{image_id}.png', nrow=BATCH_SIZE, normalize=True)
-
-
-def output_prob_image(generator, origin_images, image_id, path=''):
-    path = f'{TRAIN_OUTPUT_PATH}/{path}'
-    if not os.path.exists(path):
-        os.makedirs(path)
-    images = generator(origin_images.detach())
-    save_image(images, f'{path}prob_images{image_id}.png', nrow=BATCH_SIZE, normalize=True)
-
-
-def output_embed_image(generator, origin_images, image_id, path=''):
-    path = f'{TRAIN_OUTPUT_PATH}/{path}'
-    if not os.path.exists(path):
-        os.makedirs(path)
-    prob = generator(origin_images.detach())
-    images = embed(prob, origin_images, noise)
-    save_image(images, f'{path}embed_images{image_id}.png', nrow=BATCH_SIZE, normalize=True)
-
-
 def output_check_image(generator, check_image, epoch_time):
     path = f'{TRAIN_OUTPUT_PATH}/'
     if not os.path.exists(path):
@@ -318,6 +293,25 @@ def output_check_image(generator, check_image, epoch_time):
     embed_image = embed(prob_image, check_image, torch.rand(check_image.size()).to(device) * NOISE_MEAN)
     output_image = torch.cat([prob_image, embed_image], dim=0)
     save_image(output_image, f'{path}{epoch_time}.png', normalize=True)
+
+
+# 绘制每次迭代中的损失值变化的折线图
+def output_loss_change_figure(loss_sum, loss_dis, loss_gen):
+    x = list(range(0, EPOCHS + 1))
+
+    # plt.plot(x, loss_sum, 's-', color='r', label="sum loss")
+    plt.plot(x, loss_dis, 'o-', color='g', label="discriminator loss")
+    plt.plot(x, loss_gen, 'o-', color='b', label="generator loss")
+
+    plt.xlabel("iter time")
+    plt.ylabel("loss")
+    plt.legend(loc="best")
+
+    path = f'{TRAIN_OUTPUT_PATH}/'
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    plt.savefig(f'{path}loss_change.png')
 
 
 # 主函数
@@ -332,6 +326,9 @@ if __name__ == '__main__':
     image_dataset, check_image = load_data()
     check_image = check_image.to(device)
     # training
+    sum_loss_list = []
+    dis_loss_list = []
+    gen_loss_list = []
     for now_epoch in range(EPOCHS + 1):
         dis_epoch_loss = 0.0
         gen_epoch_loss = 0.0
@@ -369,31 +366,27 @@ if __name__ == '__main__':
             gen_optimizers.step()
 
             with torch.no_grad():
-                dis_epoch_loss += dis_loss
-                gen_epoch_loss += gen_loss
+                dis_epoch_loss += dis_loss.cpu()
+                gen_epoch_loss += gen_loss.cpu()
 
         # 每隔一段迭代进行一次检查
-        if now_epoch in CHECK_EPOCHS:
+        if (now_epoch % CHECK_EPOCHS) == 0:
             output_check_image(generator, check_image, now_epoch)
-            # for image_id, (origin_images, _) in enumerate(image_dataset):
-            #     origin_images = origin_images.to(device)
-            #     output_origin_image(origin_images, image_id, f'{epoch}/')
-            #     output_prob_image(generator, origin_images, image_id, f'{epoch}/')
-            #     output_embed_image(generator, origin_images, image_id, f'{epoch}/')
+
+        sum_loss_list.append(dis_epoch_loss + gen_epoch_loss)
+        dis_loss_list.append(dis_epoch_loss)
+        gen_loss_list.append(gen_epoch_loss)
 
         print(f"Epoch: {now_epoch:6} - loss:{gen_epoch_loss.item() + dis_epoch_loss.item():10} [gen:{gen_epoch_loss.item():10}, dis:{dis_epoch_loss.item():10}]")
 
     # checking
     output_check_image(generator, check_image, EPOCHS)
-    # for i, (train_images, _) in enumerate(image_dataset):
-    #     train_images = train_images.to(device)
-    #     output_origin_image(train_images, i, f'{EPOCHS}/')
-    #     output_prob_image(generator, train_images, i, f'{EPOCHS}/')
-    #     output_embed_image(generator, train_images, i, f'{EPOCHS}/')
+
+    # 输出损失函数变化图像
+    output_loss_change_figure(sum_loss_list, dis_loss_list, gen_loss_list)
+
     # 保存模型
     path = f'{MODULE_PATH}/'
     if not os.path.exists(path):
         os.makedirs(path)
     torch.save(generator.state_dict(), f'{path}/generator.pth')
-
-
