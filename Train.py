@@ -4,12 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
 import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import save_image
-import matplotlib.pyplot as plt
+
+from Logger import Logger
 
 # 超参数定义
 # RELU中负数端的系数
@@ -284,6 +284,7 @@ def load_data():
     return dataloader, dataset[0][0]
 
 
+# 输出单张图像的嵌入概率图与修改图像
 def output_check_image(generator, check_image, epoch_time):
     path = f'{TRAIN_OUTPUT_PATH}/'
     if not os.path.exists(path):
@@ -295,27 +296,11 @@ def output_check_image(generator, check_image, epoch_time):
     save_image(output_image, f'{path}{epoch_time}.png', normalize=True)
 
 
-# 绘制每次迭代中的损失值变化的折线图
-def output_loss_change_figure(loss_sum, loss_dis, loss_gen):
-    x = list(range(0, EPOCHS + 1))
-
-    # plt.plot(x, loss_sum, 's-', color='r', label="sum loss")
-    plt.plot(x, loss_dis, 'o-', color='g', label="discriminator loss")
-    plt.plot(x, loss_gen, 'o-', color='b', label="generator loss")
-
-    plt.xlabel("iter time")
-    plt.ylabel("loss")
-    plt.legend(loc="best")
-
-    path = f'{TRAIN_OUTPUT_PATH}/'
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-    plt.savefig(f'{path}loss_change.png')
-
-
 # 主函数
 if __name__ == '__main__':
+    # 初始化日志
+    logger = Logger(EPOCHS)
+
     # 初始化
     generator = Generator(TRAIN_INPUT_SIZE).to(device)
     discriminator = Discriminator(TRAIN_INPUT_SIZE).to(device)
@@ -326,9 +311,6 @@ if __name__ == '__main__':
     image_dataset, check_image = load_data()
     check_image = check_image.to(device)
     # training
-    sum_loss_list = []
-    dis_loss_list = []
-    gen_loss_list = []
     for now_epoch in range(EPOCHS + 1):
         dis_epoch_loss = 0.0
         gen_epoch_loss = 0.0
@@ -366,24 +348,21 @@ if __name__ == '__main__':
             gen_optimizers.step()
 
             with torch.no_grad():
-                dis_epoch_loss += dis_loss.cpu()
-                gen_epoch_loss += gen_loss.cpu()
+                dis_epoch_loss += dis_loss.item()
+                gen_epoch_loss += gen_loss.item()
 
         # 每隔一段迭代进行一次检查
         if (now_epoch % CHECK_EPOCHS) == 0:
             output_check_image(generator, check_image, now_epoch)
 
-        sum_loss_list.append(dis_epoch_loss + gen_epoch_loss)
-        dis_loss_list.append(dis_epoch_loss)
-        gen_loss_list.append(gen_epoch_loss)
-
-        print(f"Epoch: {now_epoch:6} - loss:{gen_epoch_loss.item() + dis_epoch_loss.item():10} [gen:{gen_epoch_loss.item():10}, dis:{dis_epoch_loss.item():10}]")
+        # 输出到日志
+        logger.log_loss(now_epoch, dis_epoch_loss, gen_epoch_loss)
 
     # checking
     output_check_image(generator, check_image, EPOCHS)
 
     # 输出损失函数变化图像
-    output_loss_change_figure(sum_loss_list, dis_loss_list, gen_loss_list)
+    logger.output_loss_change_figure()
 
     # 保存模型
     path = f'{MODULE_PATH}/'
