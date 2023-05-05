@@ -24,11 +24,12 @@ class Logger:
             file.close()
 
     # 添加一次训练时的迭代中数据,并输出到日志中
-    def log_loss(self, epoch: int, gen_loss: float, dis_loss: float):
+    def log_loss(self, epoch: int, gen_loss: float, dis_loss: float, used_time: float):
         self.loss_gen.append(gen_loss)
         self.loss_dis.append(dis_loss)
         self.loss_sum.append(gen_loss + dis_loss)
-        log_str = f"Epoch: {epoch:6} - loss:{gen_loss + dis_loss:>12.6f} [gen:{gen_loss:>12.6f}, dis:{dis_loss:>12.6f}]"
+
+        log_str = f"Epoch: {epoch:6} - loss:{gen_loss + dis_loss:>12.8f} [gen:{gen_loss:>12.8f}, dis:{dis_loss:>12.8f}] - time:{int(used_time) / 3600:4.0f}:{int(used_time) / 60 % 60:02.0f}:{used_time - int(used_time):5.2f}"
         print(log_str)
         with open(f'{LOG_PATH}/train_log.txt', 'a') as file:
             file.writelines(log_str + "\n")

@@ -1,4 +1,5 @@
 import os.path
+import time
 
 import torch
 import torchvision
@@ -38,8 +39,7 @@ def gen_loss_fn(x, label, embedding_p):
     p_change_none = 1 - embedding_p
     # 有效载荷
     payload = torch.sum(- p_change_pos * torch.log2(p_change_pos) - p_change_neg * torch.log2(p_change_neg) - p_change_none * torch.log2(p_change_none), dim=[2, 3])
-
-    embed_loss = torch.mean(torch.pow(payload - CFG.TRAIN.TRAIN_INPUT_SIZE * CFG.TRAIN.TRAIN_INPUT_SIZE * CFG.TRAIN.EMBED_RATE, 2))
+    embed_loss = torch.mean(torch.pow(CFG.TRAIN.TRAIN_INPUT_SIZE * CFG.TRAIN.TRAIN_INPUT_SIZE * CFG.TRAIN.EMBED_RATE - payload, 2))
 
     return CFG.TRAIN.GEN_LOSS_ALPHA * classify_loss + CFG.TRAIN.GEN_LOSS_BETA * embed_loss
 
@@ -66,20 +66,21 @@ def output_check_image(generator, check_image, epoch_time):
     prob_image = generator(check_image)
     embed_image = embed(prob_image, check_image, torch.rand(check_image.size()).to(device) * CFG.TRAIN.NOISE_MEAN)
     output_image = torch.cat([prob_image, embed_image / 255], dim=0)
-    save_image(output_image, f'{path}{epoch_time}.png', normalize=True)
+    save_image(output_image, f'{path}{epoch_time}.png')
 
 
 # 主函数
 if __name__ == '__main__':
     # 初始化日志
     logger = Logger(CFG.TRAIN.EPOCHS)
-
+    # 开始计时
+    start_time = time.time()
     # 初始化
     generator = Generator(CFG.TRAIN.TRAIN_INPUT_SIZE).to(device)
     discriminator = Discriminator(CFG.TRAIN.TRAIN_INPUT_SIZE).to(device)
     # Adam优化器
-    gen_optimizers = torch.optim.Adam(discriminator.parameters(), lr=CFG.TRAIN.LEARNING_RATE)
-    dis_optimizers = torch.optim.Adam(generator.parameters(), lr=CFG.TRAIN.LEARNING_RATE)
+    gen_optimizers = torch.optim.Adam(discriminator.parameters(), lr=CFG.TRAIN.GEN_LEARN_RATE)
+    dis_optimizers = torch.optim.Adam(generator.parameters(), lr=CFG.TRAIN.DIS_LEARN_RATE)
     # 载入训练集和测试图片
     image_dataset, check_image = load_data()
     check_image = check_image.to(device)
@@ -136,7 +137,7 @@ if __name__ == '__main__':
             output_check_image(generator, check_image, now_epoch)
 
         # 输出到日志
-        logger.log_loss(now_epoch, gen_epoch_loss, dis_epoch_loss)
+        logger.log_loss(now_epoch, gen_epoch_loss, dis_epoch_loss, time.time() - start_time)
 
     # checking
     output_check_image(generator, check_image, CFG.TRAIN.EPOCHS)
