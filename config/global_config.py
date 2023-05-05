@@ -7,13 +7,13 @@ cfg = __C
 
 # 训练用参数
 __C.TRAIN = edict()
-__C.TRAIN.LEARNING_RATE = 0.001
+__C.TRAIN.LEARNING_RATE = 0.0001
 # RELU中负数端的系数
 __C.TRAIN.RELU_GAMA = 0.2
 # 单次训练batch大小
 __C.TRAIN.BATCH_SIZE = 2
 # 迭代次数
-__C.TRAIN.EPOCHS = 4
+__C.TRAIN.EPOCHS = 40
 # 进行检查的训练数
 __C.TRAIN.CHECK_EPOCHS = 2
 # 生成器输入尺寸
@@ -21,12 +21,12 @@ __C.TRAIN.TRAIN_INPUT_SIZE = 256
 # 训练用图片
 __C.TRAIN.TRAIN_INPUT_PATH = 'dataset'
 # 噪音均值
-__C.TRAIN.NOISE_MEAN = 0.5
+__C.TRAIN.NOISE_MEAN = 1.0
 # 嵌入器中双tanh的参数
 __C.TRAIN.TANH_LAMBDA = 60
 # 生成器损失函数参数
 __C.TRAIN.GEN_LOSS_ALPHA = 1
-__C.TRAIN.GEN_LOSS_BETA = 1e-6
+__C.TRAIN.GEN_LOSS_BETA = 1e-7
 # 嵌入率（用于计算生成器嵌入损失）
 __C.TRAIN.EMBED_RATE = 0.4
 # 测试输出位置

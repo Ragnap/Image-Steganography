@@ -84,7 +84,7 @@ class Discriminator(nn.Module):
         # Group 5
         self.conv_5 = nn.Conv2d(dis_filter[3], dis_filter[4], kernel_size=3, padding=1)
         self.bn_5 = nn.BatchNorm2d(dis_filter[4])
-        self.pool_5 = torch.nn.AdaptiveAvgPool2d(dis_filter[4])
+        self.pool_5 = torch.nn.AdaptiveAvgPool2d((1, 1))
         # Group 6 FullyConnect
         self.linear = nn.Linear(in_features=dis_filter[4], out_features=2, bias=True)
 

@@ -28,7 +28,7 @@ class Logger:
         self.loss_gen.append(gen_loss)
         self.loss_dis.append(dis_loss)
         self.loss_sum.append(gen_loss + dis_loss)
-        log_str = f"Epoch: {epoch:6} - loss:{gen_loss + dis_loss:>12.3f} [gen:{gen_loss:>12.3f}, dis:{dis_loss:>12.3f}]"
+        log_str = f"Epoch: {epoch:6} - loss:{gen_loss + dis_loss:>12.6f} [gen:{gen_loss:>12.6f}, dis:{dis_loss:>12.6f}]"
         print(log_str)
         with open(f'{LOG_PATH}/train_log.txt', 'a') as file:
             file.writelines(log_str + "\n")
