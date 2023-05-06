@@ -48,8 +48,8 @@ class Logger:
         x = list(range(0, self.epochs + 1))
 
         # plt.plot(x, self.loss_sum, 's-', color='r', label="sum loss")
-        plt.plot(x, self.loss_dis, 'o-', color='g', label="discriminator loss")
-        plt.plot(x, self.loss_gen, 'o-', color='b', label="generator loss")
+        plt.plot(x, self.loss_dis, 'o-', color='g', linewidth=1, markersize='1', label="discriminator loss")
+        plt.plot(x, self.loss_gen, 'o-', color='b', linewidth=1, markersize='1', label="generator loss")
 
         plt.xlabel("iter time")
         plt.ylabel("loss")
@@ -60,12 +60,13 @@ class Logger:
             os.makedirs(path)
 
         plt.savefig(f'{path}loss_change.png')
+        plt.close()
 
     # 输出将所有迭代中准确率变化的折线图
     def output_acc_change_figure(self):
         x = list(range(0, self.epochs + 1))
 
-        plt.plot(x, self.accuracy, 'o-', color='g')
+        plt.plot(x, self.accuracy, 'o-', color='g', linewidth=1, markersize='1')
 
         plt.xlabel("iter time")
         plt.ylabel("accuracy")
@@ -75,3 +76,4 @@ class Logger:
             os.makedirs(path)
 
         plt.savefig(f'{path}acc_change.png')
+        plt.close()
