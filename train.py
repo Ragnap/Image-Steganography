@@ -91,8 +91,12 @@ if __name__ == '__main__':
     fake_labels[:] = torch.tensor([1, 0])
     # training
     for now_epoch in range(CFG.TRAIN.EPOCHS + 1):
+        # 单次迭代的损失统计
         dis_epoch_loss = 0.0
         gen_epoch_loss = 0.0
+        # 单次迭代的准确率统计
+        correct_count = 0
+        total_count = 0
         for i, (train_images, _) in enumerate(image_dataset):
             train_images = train_images.to(device)
             # 生成噪音
@@ -114,7 +118,11 @@ if __name__ == '__main__':
             # 判别器总损失相加
             dis_loss = dis_real_loss + dis_fake_loss
             dis_optimizers.step()
-
+            # 判别器准确度计算
+            real_result = torch.eq(torch.argmax(real_output, dim=1), torch.argmax(real_labels, dim=1)).int()
+            fake_result = torch.eq(torch.argmax(fake_output, dim=1), torch.argmax(fake_labels, dim=1)).int()
+            correct_count += torch.sum(real_result).item() + torch.sum(fake_result).item()
+            total_count += real_result.shape[0] + fake_result.shape[0]
             # 训练生成器
             gen_optimizers.zero_grad()
             embedding_prob = generator(train_images)
@@ -136,14 +144,17 @@ if __name__ == '__main__':
         if (now_epoch % CFG.TRAIN.CHECK_EPOCHS) == 0:
             output_check_image(generator, check_image, now_epoch)
 
-        # 输出到日志
+        # 输出损失到日志
         logger.log_loss(now_epoch, gen_epoch_loss, dis_epoch_loss, time.time() - start_time)
+        # 输出准确率
+        logger.log_accuracy(now_epoch, correct_count / total_count)
 
     # checking
     output_check_image(generator, check_image, CFG.TRAIN.EPOCHS)
 
     # 输出损失函数变化图像
     logger.output_loss_change_figure()
+    logger.output_acc_change_figure()
 
     # 保存模型
     path = f'{CFG.TRAIN.MODULE_PATH}/'
