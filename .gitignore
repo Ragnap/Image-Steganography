@@ -1,1 +1,7 @@
-output
+/Pytorch/output/train/
+
+/TensorFlow/output/unet++/pic/
+/TensorFlow/output/unet++/model/
+/TensorFlow/output/unet/model/
+/TensorFlow/output/unet/pic/
+

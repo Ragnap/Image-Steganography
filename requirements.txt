@@ -1,5 +1,0 @@
-torch~=2.0.0+cu117
-numpy~=1.24.1
-torchvision~=0.15.1+cu117
-matplotlib~=3.7.1
-easydict~=1.10
