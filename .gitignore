@@ -5,3 +5,12 @@
 /TensorFlow/output/unet/model/
 /TensorFlow/output/unet/pic/
 
+TensorFlow/output/unet++/final.ckpt.data-00000-of-00001
+TensorFlow/output/unet++/final.ckpt.index
+TensorFlow/output/unet++/final.ckpt.meta
+TensorFlow/output/unet++/checkpoint
+
+TensorFlow/output/unet/final.ckpt.data-00000-of-00001
+TensorFlow/output/unet/final.ckpt.index
+TensorFlow/output/unet/final.ckpt.meta
+TensorFlow/output/unet/checkpoint
